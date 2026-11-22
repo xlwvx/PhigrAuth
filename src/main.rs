@@ -30,17 +30,24 @@ fn main() -> glib::ExitCode {
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
-            "--config" => {
+            "--config" | "--snapshots" | "--user" => {
+                let value = match args.get(i + 1) {
+                    Some(v) => v.clone(),
+                    None => {
+                        eprintln!("phigrauth: {} 缺少参数值", args[i]);
+                        return glib::ExitCode::FAILURE;
+                    }
+                };
+                if args[i] != "--user" && value.is_empty() {
+                    eprintln!("phigrauth: {} 的参数值不能为空", args[i]);
+                    return glib::ExitCode::FAILURE;
+                }
+                match args[i].as_str() {
+                    "--config" => config_path = Some(value),
+                    "--snapshots" => snapshots = Some(value),
+                    _ => user_override = Some(value),
+                }
                 i += 1;
-                config_path = args.get(i).cloned();
-            }
-            "--snapshots" => {
-                i += 1;
-                snapshots = args.get(i).cloned();
-            }
-            "--user" => {
-                i += 1;
-                user_override = args.get(i).cloned();
             }
             "--dry-power" => dry_power = true,
             "--dev-mock" => dev_mock = true,
@@ -63,10 +70,21 @@ fn main() -> glib::ExitCode {
     }
 
     if dev_mock {
-        eprintln!("phigrauth: WARNING: development mock authentication is enabled");
-        auth::enable_dev_mock();
+        match auth::enable_dev_mock() {
+            Ok(()) => eprintln!("phigrauth: WARNING: development mock authentication is enabled"),
+            Err(e) => {
+                eprintln!("phigrauth: {e}");
+                return glib::ExitCode::FAILURE;
+            }
+        }
     }
-    let config = Config::load(config_path.as_deref().map(std::path::Path::new));
+    let config = match Config::load(config_path.as_deref().map(std::path::Path::new)) {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("phigrauth: {e}");
+            return glib::ExitCode::FAILURE;
+        }
+    };
 
     if let Some(dir) = snapshots {
         return match render_snapshots(&dir, &config, user_override.as_deref()) {
@@ -91,16 +109,37 @@ Options:
   --config <path>     configuration file
   --user <name>       default user name
   --dry-power         do not run systemctl for F1/F2 (for testing)
-  --dev-mock          accept PHIGRAUTH_DEV_PASSWORD instead of PAM (dev only)
-  --windowed          do not go fullscreen
+{dev_mock_flag}  --windowed          do not go fullscreen
   --snapshots <dir>   render reference snapshots and exit
   -h, --help          show this help
   -V, --version       show version
 
 Environment:
-  PHIGRAUTH_USER, PHIGRAUTH_DEV_PASSWORD (with --dev-mock)
-"#
+  PHIGRAUTH_USER{dev_mock_env}
+"#,
+        dev_mock_flag = dev_mock_help_flag(),
+        dev_mock_env = dev_mock_help_env(),
     );
+}
+
+#[cfg(feature = "dev-mock")]
+fn dev_mock_help_flag() -> &'static str {
+    "  --dev-mock          accept PHIGRAUTH_DEV_PASSWORD instead of PAM (dev only)\n"
+}
+
+#[cfg(not(feature = "dev-mock"))]
+fn dev_mock_help_flag() -> &'static str {
+    ""
+}
+
+#[cfg(feature = "dev-mock")]
+fn dev_mock_help_env() -> &'static str {
+    ", PHIGRAUTH_DEV_PASSWORD (with --dev-mock)"
+}
+
+#[cfg(not(feature = "dev-mock"))]
+fn dev_mock_help_env() -> &'static str {
+    ""
 }
 
 fn run_gtk(
@@ -111,6 +150,7 @@ fn run_gtk(
 ) -> glib::ExitCode {
     let app = gtk::Application::builder()
         .application_id("dev.xlwvx.PhigrAuth")
+        .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
         .build();
 
     let config = Rc::new(config);
@@ -208,6 +248,7 @@ fn run_gtk(
                     gtk::gdk::Key::Delete => Some(Key::Delete),
                     gtk::gdk::Key::F1 => Some(Key::F1),
                     gtk::gdk::Key::F2 => Some(Key::F2),
+                    gtk::gdk::Key::Escape => Some(Key::Escape),
                     _ => None,
                 };
                 let key = key.or_else(|| {

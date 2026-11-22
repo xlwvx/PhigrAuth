@@ -1,4 +1,6 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::auth::{self, AuthOutcome};
@@ -57,7 +59,7 @@ impl Focus {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Key {
     Left,
     Right,
@@ -70,6 +72,7 @@ pub enum Key {
     Char(char),
     F1,
     F2,
+    Escape,
 }
 
 pub struct WipeAnim {
@@ -142,6 +145,7 @@ pub struct App {
 
     auth_rx: Option<Receiver<AuthOutcome>>,
     auth_result: Option<AuthOutcome>,
+    auth_cancel: Option<Arc<AtomicBool>>,
     greetd_session: Option<greetd::Session>,
     verifying_start: Option<Instant>,
     flash_start: Option<Instant>,
@@ -174,6 +178,7 @@ impl App {
                     name,
                     kind: SessionKind::Wayland,
                     desktop_names: None,
+                    desktop_id: None,
                 });
             }
             if !s
@@ -218,6 +223,7 @@ impl App {
             subtitle: Anim::new(SubtitleKind::Denied),
             auth_rx: None,
             auth_result: None,
+            auth_cancel: None,
             greetd_session: None,
             verifying_start: None,
             flash_start: None,
@@ -265,6 +271,7 @@ impl App {
             if let Ok(outcome) = rx.try_recv() {
                 self.auth_result = Some(outcome);
                 self.auth_rx = None;
+                self.auth_cancel = None;
             }
         }
         if let Some(rx) = &self.power_tx {
@@ -272,7 +279,14 @@ impl App {
                 self.power_tx = None;
                 match result {
                     Ok(()) => {
-                        self.quit_requested = true;
+                        // Keep the "powering" screen up: exiting here lets
+                        // greetd restart the greeter and replay the boot
+                        // animation just before the machine goes down.
+                        self.toast = Some((
+                            format!("已请求{}，等待系统关闭…", self.power_label),
+                            now + Duration::from_secs(30),
+                        ));
+                        self.last_change = now;
                     }
                     Err(e) => {
                         self.phase = Phase::Login;
@@ -302,6 +316,7 @@ impl App {
                     .as_secs_f32();
                 if elapsed >= VERIFY_MIN {
                     if let Some(outcome) = self.auth_result.take() {
+                        self.auth_cancel = None;
                         match outcome {
                             AuthOutcome::Success => {
                                 eprintln!("phigrauth: authentication succeeded for {}", self.user);
@@ -331,7 +346,11 @@ impl App {
                             }
                         }
                     } else if elapsed > 20.0 {
+                        if let Some(cancel) = &self.auth_cancel {
+                            cancel.store(true, Ordering::Relaxed);
+                        }
                         self.auth_rx = None;
+                        self.auth_cancel = None;
                         self.fail_and_retry(now, Some("认证超时".into()));
                     }
                 }
@@ -364,17 +383,7 @@ impl App {
                                 let (cmd, env) = sessions::greetd_spec(selected, &launch_user);
                                 eprintln!("phigrauth: starting greetd session {cmd:?}");
                                 if let Err(e) = session.start(cmd, env) {
-                                    self.phase = Phase::Login;
-                                    self.phase_start = now;
-                                    self.exit_start = None;
-                                    self.set_palette(Palette::Red, now);
-                                    self.set_title(TitleKind::Denied, now);
-                                    self.set_subtitle(SubtitleKind::Denied, now);
-                                    self.toast = Some((
-                                        format!("greetd 无法启动会话: {e}"),
-                                        now + Duration::from_secs(4),
-                                    ));
-                                    self.last_change = now;
+                                    self.session_error(now, format!("greetd 无法启动会话: {e}"));
                                     return;
                                 }
                                 self.quit_requested = true;
@@ -382,20 +391,17 @@ impl App {
                             }
                         }
                         if let Some(selected) = self.sessions.get(self.session_idx) {
+                            if selected.kind != SessionKind::Tty {
+                                self.session_error(
+                                    now,
+                                    "本地 PAM 模式不支持图形会话；请通过 greetd 启动".into(),
+                                );
+                                return;
+                            }
                             match sessions::launch_session(selected, &launch_user) {
                                 Ok(()) => {}
                                 Err(e) => {
-                                    self.phase = Phase::Login;
-                                    self.phase_start = now;
-                                    self.exit_start = None;
-                                    self.set_palette(Palette::Red, now);
-                                    self.set_title(TitleKind::Denied, now);
-                                    self.set_subtitle(SubtitleKind::Denied, now);
-                                    self.toast = Some((
-                                        format!("无法启动会话: {e}"),
-                                        now + Duration::from_secs(4),
-                                    ));
-                                    self.last_change = now;
+                                    self.session_error(now, format!("无法启动会话: {e}"));
                                     return;
                                 }
                             }
@@ -438,10 +444,18 @@ impl App {
         {
             return true;
         }
-        if !matches!(self.phase, Phase::Login) {
+        // Powering is a static screen; keep polling the worker without
+        // re-rasterizing the whole SVG scene at refresh rate.
+        if self.phase == Phase::Powering {
+            return false;
+        }
+        // Boot/Granted/Exiting have continuous animation; Verifying is a
+        // static screen after its title/palette crossfade, so only redraw when
+        // those animations, the flash, or a toast are still active.
+        if !matches!(self.phase, Phase::Login | Phase::Verifying) {
             return true;
         }
-        if self.auth_rx.is_some() {
+        if self.auth_rx.is_some() && self.phase != Phase::Verifying {
             return true;
         }
         // animations still running?
@@ -623,6 +637,12 @@ impl App {
 
     pub fn handle_key(&mut self, key: Key, now: Instant) {
         self.last_change = now;
+        if key == Key::Escape {
+            if self.phase == Phase::Verifying {
+                self.cancel_verify(now);
+            }
+            return;
+        }
         match key {
             Key::F1 | Key::F2 => {
                 if matches!(self.phase, Phase::Login) {
@@ -665,7 +685,7 @@ impl App {
             },
             Key::Delete | Key::Clear => match self.focus {
                 Focus::User => self.user.clear(),
-                Focus::Password => self.password.clear(),
+                Focus::Password => self.wipe_password(),
                 Focus::Env => {}
             },
             Key::Char(c) => match self.focus {
@@ -681,28 +701,59 @@ impl App {
                 }
                 Focus::Env => {}
             },
-            Key::F1 | Key::F2 => {}
+            Key::F1 | Key::F2 | Key::Escape => {}
         }
+    }
+
+    fn session_error(&mut self, now: Instant, message: String) {
+        self.phase = Phase::Login;
+        self.phase_start = now;
+        self.exit_start = None;
+        self.set_palette(Palette::Red, now);
+        self.set_title(TitleKind::Denied, now);
+        self.set_subtitle(SubtitleKind::Denied, now);
+        self.toast = Some((message, now + Duration::from_secs(4)));
+        self.last_change = now;
     }
 
     fn enter_granted(&mut self, now: Instant) {
         self.phase = Phase::Granted;
         self.phase_start = now;
         self.granted_start = Some(now);
+        self.wipe_password();
         self.set_palette(Palette::Green, now);
         self.set_title(TitleKind::Granted, now);
         self.set_subtitle(SubtitleKind::Granted, now);
         self.last_change = now;
     }
 
+    fn cancel_verify(&mut self, now: Instant) {
+        self.auth_result = None;
+        self.auth_rx = None;
+        self.fail_and_retry(now, Some("已取消认证".into()));
+    }
+
+    fn wipe_password(&mut self) {
+        // Best-effort wipe before releasing the buffer.  The auth worker has
+        // its own copy, but the long-lived UI buffer should not retain it.
+        unsafe {
+            self.password.as_mut_vec().fill(0);
+        }
+        self.password.clear();
+    }
+
     fn fail_and_retry(&mut self, now: Instant, toast: Option<String>) {
+        if let Some(cancel) = &self.auth_cancel {
+            cancel.store(true, Ordering::Relaxed);
+        }
+        self.auth_cancel = None;
         self.greetd_session = None;
         self.phase = Phase::Login;
         self.phase_start = now;
         self.focus = Focus::Password;
         // The user explicitly asked for the password box to be cleared after
         // a failed verification.
-        self.password.clear();
+        self.wipe_password();
         self.flash_start = Some(now);
         // Hide the verifying -> retry switch behind the opaque #550808 flash.
         // When the red fades, the retry state is already fully rendered.
@@ -752,12 +803,15 @@ impl App {
         self.set_palette(Palette::Yellow, now);
         self.set_title(TitleKind::Verifying, now);
         self.set_subtitle(SubtitleKind::Verifying, now);
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.auth_cancel = Some(cancel.clone());
         let (tx, rx): (Sender<AuthOutcome>, Receiver<AuthOutcome>) = channel();
         auth::spawn(
             self.config.auth_backend,
             self.config.pam_service.clone(),
             self.user.clone(),
             self.password.clone(),
+            cancel,
             tx,
         );
         self.auth_rx = Some(rx);
@@ -791,6 +845,12 @@ impl App {
             let _ = tx.send(result);
         });
         self.power_tx = Some(rx);
+    }
+}
+
+impl Drop for App {
+    fn drop(&mut self) {
+        self.wipe_password();
     }
 }
 
@@ -856,12 +916,14 @@ mod tests {
                 exec: "niri-session".into(),
                 kind: SessionKind::Wayland,
                 desktop_names: Some("niri".into()),
+                desktop_id: Some("niri".into()),
             },
             Session {
                 name: "COSMIC".into(),
                 exec: "cosmic-session".into(),
                 kind: SessionKind::Wayland,
                 desktop_names: Some("COSMIC".into()),
+                desktop_id: Some("cosmic".into()),
             },
         ];
         app.session_idx = 0;
@@ -974,6 +1036,49 @@ mod tests {
     }
 
     #[test]
+    fn local_pam_refuses_graphical_session() {
+        let (mut app, t0) = test_app();
+        app.config.launch_session = true;
+        app.phase = Phase::Exiting;
+        app.exit_start = Some(t0 - Duration::from_secs(2));
+        app.tick(t0);
+        assert_eq!(app.phase, Phase::Login);
+        assert!(app
+            .toast
+            .as_ref()
+            .is_some_and(|(message, _)| message.contains("本地 PAM")));
+    }
+
+    #[test]
+    fn power_success_does_not_exit_into_boot_animation() {
+        let (mut app, t0) = test_app();
+        app.phase = Phase::Powering;
+        app.power_start = Some(t0);
+        let (tx, rx) = channel();
+        app.power_tx = Some(rx);
+        tx.send(Ok(())).unwrap();
+        app.tick(t0 + Duration::from_millis(10));
+        assert_eq!(app.phase, Phase::Powering);
+        assert!(!app.quit_requested);
+    }
+
+    #[test]
+    fn escape_cancels_verifying() {
+        let (mut app, t0) = test_app();
+        app.phase = Phase::Verifying;
+        app.verifying_start = Some(t0);
+        let (_tx, rx) = channel();
+        app.auth_rx = Some(rx);
+        let cancel = Arc::new(AtomicBool::new(false));
+        app.auth_cancel = Some(cancel.clone());
+        app.password = "secret".into();
+        app.handle_key(Key::Escape, t0);
+        assert_eq!(app.phase, Phase::Login);
+        assert!(cancel.load(Ordering::Relaxed));
+        assert!(app.password.is_empty());
+    }
+
+    #[test]
     fn empty_user_shows_user_without_colon() {
         let (mut app, t0) = test_app();
         app.phase = Phase::Login;
@@ -1083,6 +1188,7 @@ mod tests {
             exec: "true".into(),
             kind: SessionKind::Wayland,
             desktop_names: Some("test".into()),
+            desktop_id: Some("test".into()),
         }];
         app.session_idx = 0;
         app.start_verify(t0);

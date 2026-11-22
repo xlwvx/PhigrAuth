@@ -4,7 +4,8 @@
 # Authentication backend:
 #   "auto"   -> use greetd IPC when GREETD_SOCK is present, otherwise PAM
 #   "greetd" -> always use greetd IPC (requires GREETD_SOCK)
-#   "pam"    -> always use local Linux-PAM
+#   "pam"    -> local Linux-PAM; tty shell/development only (no graphical
+#               session/logind session setup)
 auth_backend = "auto"
 
 # PAM service used when auth_backend is "pam" (or auto without greetd).
@@ -16,8 +17,9 @@ default_user = ""
 # Session selected at startup.  Matches Name or DesktopNames from a .desktop file.
 default_session = "niri"
 
-# Where to look for session desktop entries.
-sessions_dirs = ["/usr/share/wayland-sessions", "/usr/share/xsessions"]
+# Where to look for session desktop entries.  Leave unset to derive these
+# from XDG_DATA_DIRS (typically /usr/local/share and /usr/share).
+# sessions_dirs = ["/usr/share/wayland-sessions", "/usr/share/xsessions"]
 
 # Power actions (F1 / F2).  Executed with the arguments exactly as listed.
 poweroff_command = ["systemctl", "poweroff"]

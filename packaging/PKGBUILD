@@ -36,7 +36,9 @@ package() {
 
   install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
   install -Dm644 config.example.toml "$pkgdir/usr/share/doc/$pkgname/config.example.toml"
-  cp -a --no-preserve=ownership docs "$pkgdir/usr/share/doc/$pkgname/docs"
+  if [ -d docs ]; then
+    cp -a --no-preserve=ownership docs "$pkgdir/usr/share/doc/$pkgname/docs"
+  fi
 
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 assets/fonts/OFL-Saira.txt \

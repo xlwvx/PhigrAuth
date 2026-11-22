@@ -115,8 +115,20 @@ pub struct PaletteColors {
 impl PaletteColors {
     pub fn mix(self, other: PaletteColors, t: f32) -> PaletteColors {
         let t = t.clamp(0.0, 1.0);
+        if t <= 0.0 {
+            return self;
+        }
+        if t >= 1.0 {
+            return other;
+        }
+        // Palette colors are embedded in the cache key as hex strings.  During
+        // the 0.18s crossfade, unquantized channels would create a new key for
+        // every frame and re-rasterize the whole layer.  Quantizing only the
+        // intermediate values to 8 levels per channel keeps the cache useful;
+        // the exact endpoint palettes are returned above.
+        let quantize = |v: u8| (v / 32) * 32;
         let f = |a: [u8; 3], b: [u8; 3]| {
-            let mix = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
+            let mix = |x: u8, y: u8| quantize((x as f32 + (y as f32 - x as f32) * t).round() as u8);
             [mix(a[0], b[0]), mix(a[1], b[1]), mix(a[2], b[2])]
         };
         PaletteColors {
@@ -391,11 +403,13 @@ impl Renderer {
         let arrow_dy = (st.elem_y - st.rise) as f64;
         if st.arrows_alpha > 0.001 {
             let key = Key::ArrowsLeft(hex(st.palette.grad_a), hex(st.palette.grad_b));
-            let layer = self.layer_for(&key);
-            Self::paint_layer(cr, &layer, -spread, arrow_dy, st.arrows_alpha, ox, oy, s);
+            if let Some(layer) = self.layer_for(&key) {
+                Self::paint_layer(cr, &layer, -spread, arrow_dy, st.arrows_alpha, ox, oy, s);
+            }
             let key = Key::ArrowsRight(hex(st.palette.grad_a), hex(st.palette.grad_b));
-            let layer = self.layer_for(&key);
-            Self::paint_layer(cr, &layer, spread, arrow_dy, st.arrows_alpha, ox, oy, s);
+            if let Some(layer) = self.layer_for(&key) {
+                Self::paint_layer(cr, &layer, spread, arrow_dy, st.arrows_alpha, ox, oy, s);
+            }
         }
 
         // --- title --------------------------------------------------------
@@ -432,36 +446,39 @@ impl Renderer {
         if st.subtitle_alpha > 0.001 {
             if let Some(prev) = st.subtitle_prev {
                 if st.subtitle_mix < 0.999 {
-                    let layer = self.layer_for(&Key::Subtitle(prev));
-                    Self::paint_layer(
-                        cr,
-                        &layer,
-                        0.0,
-                        subtitle_dy,
-                        st.subtitle_alpha * (1.0 - st.subtitle_mix),
-                        ox,
-                        oy,
-                        s,
-                    );
+                    if let Some(layer) = self.layer_for(&Key::Subtitle(prev)) {
+                        Self::paint_layer(
+                            cr,
+                            &layer,
+                            0.0,
+                            subtitle_dy,
+                            st.subtitle_alpha * (1.0 - st.subtitle_mix),
+                            ox,
+                            oy,
+                            s,
+                        );
+                    }
                 }
             }
-            let layer = self.layer_for(&Key::Subtitle(st.subtitle));
-            Self::paint_layer(
-                cr,
-                &layer,
-                0.0,
-                subtitle_dy,
-                st.subtitle_alpha * st.subtitle_mix,
-                ox,
-                oy,
-                s,
-            );
+            if let Some(layer) = self.layer_for(&Key::Subtitle(st.subtitle)) {
+                Self::paint_layer(
+                    cr,
+                    &layer,
+                    0.0,
+                    subtitle_dy,
+                    st.subtitle_alpha * st.subtitle_mix,
+                    ox,
+                    oy,
+                    s,
+                );
+            }
         }
 
         // --- input bars ---------------------------------------------------
         let bars_dy = (st.bars_y - st.rise) as f64;
-        let line = self.layer_for(&Key::Connector(hex(st.palette.line)));
-        Self::paint_layer(cr, &line, 0.0, bars_dy, st.bars_alpha, ox, oy, s);
+        if let Some(line) = self.layer_for(&Key::Connector(hex(st.palette.line))) {
+            Self::paint_layer(cr, &line, 0.0, bars_dy, st.bars_alpha, ox, oy, s);
+        }
         for i in 0..3 {
             let focused = st.bars[i].focused;
             let fill = hex(st.palette.fill);
@@ -473,8 +490,9 @@ impl Renderer {
                 text: st.bars[i].text.clone(),
                 focused: false,
             };
-            let layer = self.layer_for(&key);
-            Self::paint_layer(cr, &layer, 0.0, bars_dy, st.bars_alpha, ox, oy, s);
+            if let Some(layer) = self.layer_for(&key) {
+                Self::paint_layer(cr, &layer, 0.0, bars_dy, st.bars_alpha, ox, oy, s);
+            }
             if focused {
                 let key = Key::Bar {
                     index: i as u8,
@@ -483,8 +501,9 @@ impl Renderer {
                     text: st.bars[i].text.clone(),
                     focused: true,
                 };
-                let layer = self.layer_for(&key);
-                Self::paint_layer(cr, &layer, 0.0, bars_dy, st.bars_alpha, ox, oy, s);
+                if let Some(layer) = self.layer_for(&key) {
+                    Self::paint_layer(cr, &layer, 0.0, bars_dy, st.bars_alpha, ox, oy, s);
+                }
             }
         }
         if let Some(w) = &st.wipe {
@@ -513,12 +532,14 @@ impl Renderer {
                 accent: hex(st.palette.accent),
                 env_hint: st.footer_env_hint,
             };
-            let layer = self.layer_for(&key);
-            Self::paint_layer(cr, &layer, 0.0, -st.rise as f64, st.footer_alpha, ox, oy, s);
+            if let Some(layer) = self.layer_for(&key) {
+                Self::paint_layer(cr, &layer, 0.0, -st.rise as f64, st.footer_alpha, ox, oy, s);
+            }
             if let Some(toast) = &st.toast {
                 let key = Key::Toast(toast.clone());
-                let layer = self.layer_for(&key);
-                Self::paint_layer(cr, &layer, 0.0, -st.rise as f64, st.footer_alpha, ox, oy, s);
+                if let Some(layer) = self.layer_for(&key) {
+                    Self::paint_layer(cr, &layer, 0.0, -st.rise as f64, st.footer_alpha, ox, oy, s);
+                }
             }
         }
 
@@ -546,7 +567,9 @@ impl Renderer {
         oy: f64,
         s: f64,
     ) {
-        let layer = self.layer_for(&Key::Title(kind));
+        let Some(layer) = self.layer_for(&Key::Title(kind)) else {
+            return;
+        };
         let (px, py) = layer
             .ink
             .map(|i| (i.x + i.w / 2.0, i.y + i.h / 2.0))
@@ -581,7 +604,7 @@ impl Renderer {
         cr.paint_with_alpha(alpha.clamp(0.0, 1.0) as f64).ok();
     }
 
-    fn layer_for(&mut self, key: &Key) -> Layer {
+    fn layer_for(&mut self, key: &Key) -> Option<Layer> {
         if !self.cache.contains_key(key) {
             if self.cache.len() > 260 {
                 self.cache.clear();
@@ -590,7 +613,7 @@ impl Renderer {
                 self.cache.insert(key.clone(), layer);
             }
         }
-        self.cache.get(key).expect("layer").clone()
+        self.cache.get(key).cloned()
     }
 
     fn build_layer(&mut self, key: &Key) -> Option<Layer> {
@@ -945,4 +968,27 @@ pub fn text_ink(text: &str) -> Option<Rect> {
         w: (x1 - x0) as f32 / k,
         h: (y1 - y0) as f32 / k,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn palette_mix_endpoints_are_exact() {
+        let a = Palette::Red.colors();
+        let b = Palette::Green.colors();
+        assert_eq!(a.mix(b, 0.0).fill, a.fill);
+        assert_eq!(a.mix(b, 1.0).fill, b.fill);
+    }
+
+    #[test]
+    fn palette_mix_intermediate_is_quantized() {
+        let a = Palette::Red.colors();
+        let b = Palette::Green.colors();
+        let mid = a.mix(b, 0.5);
+        for c in [mid.grad_a, mid.fill, mid.stroke, mid.line, mid.accent] {
+            assert!(c.iter().all(|v| v % 32 == 0));
+        }
+    }
 }

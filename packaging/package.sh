@@ -19,17 +19,23 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 mkdir -p "$tmp/phigrauth-$pkgver"
-cp -a \
-  "$ROOT/Cargo.toml" \
-  "$ROOT/Cargo.lock" \
-  "$ROOT/LICENSE" \
-  "$ROOT/README.md" \
-  "$ROOT/config.example.toml" \
-  "$ROOT/src" \
-  "$ROOT/assets" \
-  "$ROOT/docs" \
-  "$ROOT/tools" \
-  "$tmp/phigrauth-$pkgver/"
+copy_paths=(
+  "$ROOT/Cargo.toml"
+  "$ROOT/Cargo.lock"
+  "$ROOT/LICENSE"
+  "$ROOT/README.md"
+  "$ROOT/config.example.toml"
+  "$ROOT/src"
+  "$ROOT/assets"
+)
+for extra in docs tools; do
+  if [ -e "$ROOT/$extra" ]; then
+    copy_paths+=("$ROOT/$extra")
+  elif [ -e "$ROOT/../$extra" ]; then
+    copy_paths+=("$ROOT/../$extra")
+  fi
+done
+cp -a "${copy_paths[@]}" "$tmp/phigrauth-$pkgver/"
 
 tar -C "$tmp" -czf "$tarball" "phigrauth-$pkgver"
 

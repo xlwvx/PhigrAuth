@@ -20,6 +20,7 @@ const MAX_MESSAGE: usize = 1024 * 1024;
 #[derive(Debug)]
 pub struct Session {
     stream: UnixStream,
+    started: bool,
 }
 
 #[derive(Debug)]
@@ -94,8 +95,8 @@ fn error_from_response(value: &Value) -> AuthError {
 fn authenticate_at(path: &Path, username: &str, password: &str) -> Result<Session, AuthError> {
     let mut stream = UnixStream::connect(path)
         .map_err(|e| AuthError::Error(format!("无法连接 greetd socket {}: {e}", path.display())))?;
-    stream.set_read_timeout(Some(Duration::from_secs(60))).ok();
-    stream.set_write_timeout(Some(Duration::from_secs(10))).ok();
+    stream.set_read_timeout(Some(Duration::from_secs(15))).ok();
+    stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
 
     send_message(
         &mut stream,
@@ -103,23 +104,30 @@ fn authenticate_at(path: &Path, username: &str, password: &str) -> Result<Sessio
     )
     .map_err(AuthError::Error)?;
 
-    // PAM conversation can consist of several questions.  The normal password
-    // login is a single "secret" message; info/error messages only need an
-    // acknowledgement.
-    for _ in 0..12 {
+    // PAM may ask any number of questions, but this compact UI only has one
+    // password field.  Answer the first secret prompt with the password and
+    // acknowledge everything else without inventing more credentials.
+    let mut password_sent = false;
+    for _ in 0..128 {
         let response = read_message(&mut stream).map_err(AuthError::Error)?;
         match response_type(&response) {
-            "success" => return Ok(Session { stream }),
+            "success" => {
+                return Ok(Session {
+                    stream,
+                    started: false,
+                });
+            }
             "error" => return Err(error_from_response(&response)),
             "auth_message" => {
                 let kind = response
                     .get("auth_message_type")
                     .and_then(Value::as_str)
                     .unwrap_or("info");
-                let reply = if kind == "secret" || kind == "visible" {
+                let reply = if kind == "secret" && !password_sent {
+                    password_sent = true;
                     json!({"type": "post_auth_message_response", "response": password})
                 } else {
-                    json!({"type": "post_auth_message_response"})
+                    json!({"type": "post_auth_message_response", "response": ""})
                 };
                 send_message(&mut stream, &reply).map_err(AuthError::Error)?;
             }
@@ -139,14 +147,37 @@ pub fn authenticate(username: &str, password: &str) -> Result<Session, AuthError
     authenticate_at(Path::new(&path), username, password)
 }
 
+impl Drop for Session {
+    fn drop(&mut self) {
+        if self.started {
+            return;
+        }
+        // Never block shutdown for long; this is best-effort cleanup of a
+        // prepared (but unstarted) greetd session.
+        self.stream
+            .set_write_timeout(Some(Duration::from_millis(250)))
+            .ok();
+        let _ = send_message(&mut self.stream, &json!({"type": "cancel_session"}));
+    }
+}
+
 impl Session {
     /// Ask greetd to start the configured session.  greetd starts it after the
     /// greeter process exits, so callers should quit immediately on success.
     pub fn start(&mut self, cmd: Vec<String>, env: Vec<String>) -> Result<(), String> {
+        self.stream
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .ok();
+        self.stream
+            .set_write_timeout(Some(Duration::from_secs(2)))
+            .ok();
         send_message(
             &mut self.stream,
             &json!({"type": "start_session", "cmd": cmd, "env": env}),
         )?;
+        // Once the request is on the wire we must not send cancel_session on
+        // drop; greetd may already be starting the session.
+        self.started = true;
         let response = read_message(&mut self.stream)?;
         match response_type(&response) {
             "success" => Ok(()),
@@ -266,6 +297,73 @@ mod tests {
             Err(AuthError::Failure(msg)) => assert_eq!(msg, "bad password"),
             other => panic!("expected auth failure, got {other:?}"),
         }
+        server.join().unwrap();
+    }
+    #[test]
+    fn second_secret_prompt_does_not_repeat_password() {
+        let path = socket_path();
+        let server_path = path.clone();
+        let server = std::thread::spawn(move || {
+            let listener = UnixListener::bind(&server_path).unwrap();
+            let (mut stream, _) = listener.accept().unwrap();
+            let _ = read_message(&mut stream).unwrap();
+            send_message(
+                &mut stream,
+                &json!({
+                    "type": "auth_message",
+                    "auth_message_type": "secret",
+                    "auth_message": "Password:"
+                }),
+            )
+            .unwrap();
+            let first = read_message(&mut stream).unwrap();
+            assert_eq!(first["response"], "pw");
+            send_message(
+                &mut stream,
+                &json!({
+                    "type": "auth_message",
+                    "auth_message_type": "secret",
+                    "auth_message": "OTP:"
+                }),
+            )
+            .unwrap();
+            let second = read_message(&mut stream).unwrap();
+            assert_eq!(second["response"], "");
+            send_message(&mut stream, &json!({"type": "success"})).unwrap();
+            let _ = std::fs::remove_file(&server_path);
+        });
+        for _ in 0..100 {
+            if path.exists() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let session = authenticate_at(&path, "alice", "pw").unwrap();
+        drop(session);
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn dropping_prepared_session_sends_cancel() {
+        let path = socket_path();
+        let server_path = path.clone();
+        let server = std::thread::spawn(move || {
+            let listener = UnixListener::bind(&server_path).unwrap();
+            let (mut stream, _) = listener.accept().unwrap();
+            let _ = read_message(&mut stream).unwrap();
+            send_message(&mut stream, &json!({"type": "success"})).unwrap();
+            let cancel = read_message(&mut stream).unwrap();
+            assert_eq!(response_type(&cancel), "cancel_session");
+            let _ = std::fs::remove_file(&server_path);
+        });
+        for _ in 0..100 {
+            if path.exists() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let session = authenticate_at(&path, "alice", "pw").unwrap();
+        drop(session);
         server.join().unwrap();
     }
 }

@@ -1,20 +1,50 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
+use std::sync::Arc;
 
 use crate::config::AuthBackend;
 use crate::greetd;
 
+#[cfg(feature = "dev-mock")]
 static DEV_MOCK: AtomicBool = AtomicBool::new(false);
 
-/// Enable the development authentication shortcut.  This requires an explicit
-/// command-line opt-in (--dev-mock) so an inherited environment variable can
-/// never silently disable PAM.
-pub fn enable_dev_mock() {
+/// Enable the development authentication shortcut.  It is compiled in only
+/// with the `dev-mock` Cargo feature, and refuses to enable when the password
+/// is missing or empty.
+#[cfg(feature = "dev-mock")]
+pub fn enable_dev_mock() -> Result<(), String> {
+    let expected = std::env::var("PHIGRAUTH_DEV_PASSWORD").unwrap_or_default();
+    if expected.is_empty() {
+        return Err("PHIGRAUTH_DEV_PASSWORD 未设置或为空，拒绝启用 dev-mock".into());
+    }
     DEV_MOCK.store(true, Ordering::Relaxed);
+    Ok(())
 }
 
-pub fn dev_mock_enabled() -> bool {
-    DEV_MOCK.load(Ordering::Relaxed)
+#[cfg(not(feature = "dev-mock"))]
+pub fn enable_dev_mock() -> Result<(), String> {
+    Err("此二进制未启用 dev-mock feature；请用 --features dev-mock 构建".into())
+}
+
+#[cfg(feature = "dev-mock")]
+fn dev_mock_outcome(password: &str) -> Option<AuthOutcome> {
+    if !DEV_MOCK.load(Ordering::Relaxed) {
+        return None;
+    }
+    let expected = std::env::var("PHIGRAUTH_DEV_PASSWORD").unwrap_or_default();
+    if expected.is_empty() {
+        return Some(AuthOutcome::Failure("dev-mock 未配置密码".into()));
+    }
+    Some(if password == expected {
+        AuthOutcome::Success
+    } else {
+        AuthOutcome::Failure("密码错误".into())
+    })
+}
+
+#[cfg(not(feature = "dev-mock"))]
+fn dev_mock_outcome(_password: &str) -> Option<AuthOutcome> {
+    None
 }
 
 #[derive(Debug)]
@@ -34,13 +64,8 @@ pub enum AuthOutcome {
 /// meant for UI development and automated screenshots; never use it on a real
 /// greeter.
 fn authenticate_pam(service: &str, user: &str, password: &str) -> AuthOutcome {
-    if dev_mock_enabled() {
-        let expected = std::env::var("PHIGRAUTH_DEV_PASSWORD").unwrap_or_default();
-        return if password == expected {
-            AuthOutcome::Success
-        } else {
-            AuthOutcome::Failure("密码错误".into())
-        };
+    if let Some(outcome) = dev_mock_outcome(password) {
+        return outcome;
     }
 
     let mut client = match pam::Client::with_password(service) {
@@ -56,6 +81,7 @@ fn authenticate_pam(service: &str, user: &str, password: &str) -> AuthOutcome {
         Err(e) => {
             use pam::PamReturnCode::*;
             match e.0 {
+                New_Authtok_Reqd => AuthOutcome::Error("密码已过期，需要修改密码".into()),
                 Auth_Err | Cred_Insufficient | Authinfo_Unavail | User_Unknown | MaxTries
                 | Acct_Expired | Cred_Expired | Perm_Denied => AuthOutcome::Failure(describe(e.0)),
                 _ => AuthOutcome::Error(format!("认证服务错误: {}", describe(e.0))),
@@ -72,6 +98,7 @@ fn describe(code: pam::PamReturnCode) -> String {
         MaxTries => "尝试次数过多".into(),
         Acct_Expired => "账户已过期".into(),
         Cred_Expired => "凭据已过期".into(),
+        New_Authtok_Reqd => "密码已过期，需要修改密码".into(),
         Cred_Insufficient => "凭据不足".into(),
         Authinfo_Unavail => "无法获取认证信息".into(),
         Perm_Denied => "权限不足".into(),
@@ -95,16 +122,15 @@ pub fn spawn(
     service: String,
     user: String,
     password: String,
+    cancel: Arc<AtomicBool>,
     tx: Sender<AuthOutcome>,
 ) {
     std::thread::spawn(move || {
-        let outcome = if dev_mock_enabled() {
-            let expected = std::env::var("PHIGRAUTH_DEV_PASSWORD").unwrap_or_default();
-            if password == expected {
-                AuthOutcome::Success
-            } else {
-                AuthOutcome::Failure("密码错误".into())
-            }
+        if cancel.load(Ordering::Relaxed) {
+            return;
+        }
+        let outcome = if let Some(outcome) = dev_mock_outcome(&password) {
+            outcome
         } else {
             let backend = match backend {
                 AuthBackend::Auto if greetd::available() => AuthBackend::Greetd,
@@ -123,6 +149,22 @@ pub fn spawn(
                 }
             }
         };
+        if cancel.load(Ordering::Relaxed) {
+            // Dropping a GreetdSuccess session sends cancel_session.
+            return;
+        }
         let _ = tx.send(outcome);
     });
+}
+
+#[cfg(all(test, feature = "dev-mock"))]
+mod dev_mock_tests {
+    use super::*;
+
+    #[test]
+    fn empty_dev_password_is_rejected() {
+        std::env::remove_var("PHIGRAUTH_DEV_PASSWORD");
+        assert!(enable_dev_mock().is_err());
+        assert!(!DEV_MOCK.load(Ordering::Relaxed));
+    }
 }

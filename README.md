@@ -23,7 +23,7 @@
   - 桌面环境：未聚焦 `env: niri`，聚焦时只显示环境名；此时底部额外显示 `↑↓ 切换桌面环境`。
   - 切换桌面环境时，旧文字先变成等大的实心方块，方块从上方往下收缩到文字下边缘，新文字从上方逐渐露出（见 [env-wipe.png](docs/screenshots/env-wipe.png)）。
   - 环境列表末尾始终附加一个 `tty shell` 选项，成功后启动用户的登录 shell（或配置的命令）。
-- **验证流程**：回车进入 `verifying.svg`；成功为 `access granted.svg`。失败时先在暗红遮罩下瞬间切到完全就绪的 `retry.svg` 状态并**清空密码输入框**，再让全屏 `#550808` 在 0.1s 内褪去——红色退完时看到的就是 retry，不会看到 verifying→retry 的过渡。
+- **验证流程**：回车进入 `verifying.svg`；成功为 `access granted.svg`。失败时先在暗红遮罩下瞬间切到完全就绪的 `retry.svg` 状态并**清空密码输入框**，再让全屏 `#550808` 在 0.1s 内褪去——红色退完时看到的就是 retry，不会看到 verifying→retry 的过渡。验证中按 `Esc` 可取消并返回登录。
 - **成功退场**：元素在 1s 内上浮出屏、背景压暗至黑，随后启动所选会话并退出。
 - **底部提示**：字号更小（7.4 viewBox 单位），基线贴近屏幕下边缘（y=283.6 / 285.75）。
 - **电源操作**：F1 关机、F2 重启（真实调用 `systemctl`，可用 `--dry-power` 测试）。
@@ -110,29 +110,30 @@ launch_session = true
 - `auth_backend`：`auto`（默认，检测到 `GREETD_SOCK` 时走 greetd，否则本地 PAM）、`greetd` 或 `pam`。
 - `pam_service`：本地 PAM 模式的服务名，默认 `login`；greetd 模式使用 greetd 自己的 PAM 服务。
 - `default_session`：优先匹配 `.desktop` 的 `Name`/`DesktopNames`；找不到时取第一个会话。
+- `sessions_dirs`：默认由 `XDG_DATA_DIRS` 推导（通常包含 `/usr/local/share` 和 `/usr/share` 下的 `wayland-sessions`/`xsessions`）；显式配置会覆盖。
 - `launch_session = false`：验证成功后只退出，不启动会话（开发/截图用）。
 - `tty_shell_command`：可选，覆盖 `tty shell` 选项执行的命令；未设置时使用用户 passwd 中的登录 shell（`-l`）。
-- 会话列表来自 `.desktop` 文件；`env:` 后显示 `DesktopNames` 的首项，因此 `niri.desktop` 显示为 `niri`；`tty shell` 始终位于列表末尾。
+- 会话列表来自 `.desktop` 文件；支持 `Name[zh_CN]` 等本地化名称、`TryExec` 和按 desktop id 去重；`env:` 后显示 `DesktopNames` 的首项，因此 `niri.desktop` 显示为 `niri`；`tty shell` 始终位于列表末尾。
 
 ## 认证与权限
 
 认证有两种后端：
 
 - **greetd IPC**（推荐，`auth_backend = "auto"` 时自动启用）：当环境变量 `GREETD_SOCK` 存在时，PhigrAuth 通过 greetd 的 Unix socket 完成 `create_session` / PAM 对话，并在退场时发送 `start_session`。greetd 以正确的用户身份启动会话，因此 greeter 本身可以以非 root 的 `greeter` 用户运行（cage 下正常工作）。
-- **本地 PAM**（`auth_backend = "pam"`）：直接调用 `pam` crate。`pam_unix` 需要读取 `/etc/shadow`，所以这种方式需要足够的权限；普通用户运行会得到 `PAM 系统错误`。
+- **本地 PAM**（`auth_backend = "pam"`）：直接调用 `pam` crate。`pam_unix` 需要读取 `/etc/shadow`，所以这种方式需要足够的权限；普通用户运行会得到 `PAM 系统错误`。该路径没有建立 pam_systemd/logind 会话，**仅适用于 tty shell/调试**；选择图形会话时会提示必须通过 greetd 启动。
 
 F1/F2 仍然直接执行配置里的 `systemctl` 命令。
 
 > 如果以 greetd 启动却无法认证，检查 `/etc/greetd/config.toml` 中的 `command` 是否正确指向本程序，并确认 `GREETD_SOCK` 能在 `cage` 子进程中保留；也可以显式设置 `auth_backend = "greetd"` 诊断。
 
-用于界面开发的测试后门（**不要**在生产 greeter 中设置）：
+用于界面开发的测试后门（**不要**在生产 greeter 中启用）：
 
 ```bash
 PHIGRAUTH_DEV_PASSWORD=test \
-  ./target/release/phigrauth --windowed --dry-power --dev-mock
+  cargo run --release --features dev-mock -- --windowed --dry-power --dev-mock
 ```
 
-只有显式传入 `--dev-mock` 时才会启用；此时密码等于 `PHIGRAUTH_DEV_PASSWORD` 即视为成功，不会调用 PAM。
+`--dev-mock` 只在带 `dev-mock` Cargo feature 构建时存在；普通 release/软件包构建不包含该代码。即使启用了 feature，`PHIGRAUTH_DEV_PASSWORD` 为空也会拒绝启用，空密码不会通过认证。
 
 ### 作为真正的 TTY greeter
 
@@ -165,6 +166,7 @@ greetd 模式下，niri 会话会直接以 `niri --session` 启动（与 `niri.s
 | `Ctrl+U` | 清空当前栏 |
 | `F1` | 关机 |
 | `F2` | 重启 |
+| `Esc` | 验证中取消认证，返回登录 |
 
 ## 实现结构
 
@@ -233,7 +235,7 @@ cargo test
 - 文本输入基于 `GdkEventControllerKey` 的 keyval，未接入输入法（IME）；中文用户名请输入 ASCII 或后续接入 `GtkIMContext`。
 - HiDPI 下图层按 GTK 逻辑像素渲染；如果合成器 scale > 1，细节可能有轻微放大模糊。
 - 直接在非 root 用户下无法用 `pam_unix` 认证（见上）。
-- 本地 PAM 模式自行启动会话，只提供最小环境；greetd 模式使用 greetd/PAM 创建的完整会话环境，生产使用应以 greetd 模式运行。
+- 本地 PAM 模式自行启动会话，只提供最小环境，且没有 logind 会话；仅支持 tty shell/调试，图形会话必须走 greetd。
 - `tty shell` 继承 greeter 的 stdio，不主动分配新 VT。
 - 内嵌 CJK 子集只覆盖 UI 文案和少量常用汉字；任意中文用户名超出子集且系统无 CJK 字体时可能缺字。
 - 无鼠标交互；仅键盘。

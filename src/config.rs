@@ -29,10 +29,7 @@ impl Default for Config {
             pam_service: "login".into(),
             default_user: None,
             default_session: None,
-            sessions_dirs: vec![
-                PathBuf::from("/usr/share/wayland-sessions"),
-                PathBuf::from("/usr/share/xsessions"),
-            ],
+            sessions_dirs: default_sessions_dirs(),
             poweroff: vec!["systemctl".into(), "poweroff".into()],
             reboot: vec!["systemctl".into(), "reboot".into()],
             launch_session: true,
@@ -55,14 +52,22 @@ struct FileConfig {
 }
 
 impl Config {
-    pub fn load(path: Option<&Path>) -> Config {
+    /// Load configuration.  An explicitly requested `--config` path is fatal
+    /// when it cannot be read or parsed; an automatically discovered file only
+    /// emits a warning and keeps defaults.
+    pub fn load(path: Option<&Path>) -> Result<Config, String> {
+        let explicit = path.is_some();
         let mut cfg = Config::default();
         let path = path.map(|p| p.to_path_buf()).or_else(default_config_path);
         let Some(path) = path else {
-            return cfg;
+            return Ok(cfg);
         };
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            return cfg;
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(e) if explicit => {
+                return Err(format!("无法读取配置 {}: {e}", path.display()));
+            }
+            Err(_) => return Ok(cfg),
         };
         match toml::from_str::<FileConfig>(&text) {
             Ok(fc) => {
@@ -100,10 +105,27 @@ impl Config {
                 }
                 cfg.tty_shell_command = fc.tty_shell_command.filter(|v| !v.is_empty());
             }
-            Err(e) => eprintln!("phigrauth: invalid config {}: {e}", path.display()),
+            Err(e) if explicit => {
+                return Err(format!("无法解析配置 {}: {e}", path.display()));
+            }
+            Err(e) => {
+                eprintln!("phigrauth: invalid config {}: {e}", path.display());
+            }
         }
-        cfg
+        Ok(cfg)
     }
+}
+
+fn default_sessions_dirs() -> Vec<PathBuf> {
+    let data_dirs =
+        std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
+    let mut out = Vec::new();
+    for base in data_dirs.split(':').filter(|s| !s.is_empty()) {
+        let base = PathBuf::from(base);
+        out.push(base.join("wayland-sessions"));
+        out.push(base.join("xsessions"));
+    }
+    out
 }
 
 fn default_config_path() -> Option<PathBuf> {
@@ -124,4 +146,27 @@ fn default_config_path() -> Option<PathBuf> {
         return Some(p);
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn explicit_missing_config_is_fatal() {
+        let path = Path::new("/definitely/not/a/phigrauth/config.toml");
+        assert!(Config::load(Some(path)).is_err());
+    }
+
+    #[test]
+    fn explicit_invalid_config_is_fatal() {
+        let path = std::env::temp_dir().join(format!(
+            "phigrauth-invalid-config-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&path, "pam_service = [").unwrap();
+        let result = Config::load(Some(&path));
+        let _ = std::fs::remove_file(&path);
+        assert!(result.is_err());
+    }
 }

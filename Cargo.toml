@@ -10,6 +10,11 @@ opt-level = 3
 lto = "thin"
 codegen-units = 1
 
+[features]
+default = []
+# Development-only authentication shortcut. Never enable for release builds.
+dev-mock = []
+
 [dependencies]
 gtk = { package = "gtk4", version = "0.9" }
 resvg = { version = "0.45.1", default-features = false, features = ["text", "system-fonts", "memmap-fonts"] }

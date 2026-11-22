@@ -15,6 +15,7 @@ pub struct Session {
     pub exec: String,
     pub kind: SessionKind,
     pub desktop_names: Option<String>,
+    pub desktop_id: Option<String>,
 }
 
 impl Session {
@@ -50,38 +51,57 @@ pub fn current_user() -> UserInfo {
     })
 }
 
+fn passwd_to_user(pw: &libc::passwd) -> UserInfo {
+    UserInfo {
+        name: unsafe { cstr(pw.pw_name) },
+        uid: pw.pw_uid,
+        gid: pw.pw_gid,
+        home: unsafe { cstr(pw.pw_dir) },
+        shell: unsafe { cstr(pw.pw_shell) },
+    }
+}
+
 pub fn user_by_uid(uid: u32) -> Option<UserInfo> {
-    unsafe {
-        let pw = libc::getpwuid(uid);
-        if pw.is_null() {
+    let mut buf: Vec<libc::c_char> = vec![0; 16 * 1024];
+    loop {
+        let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
+        let mut result: *mut libc::passwd = std::ptr::null_mut();
+        let rc =
+            unsafe { libc::getpwuid_r(uid, &mut pwd, buf.as_mut_ptr(), buf.len(), &mut result) };
+        if rc == libc::ERANGE {
+            buf.resize(buf.len() * 2, 0);
+            continue;
+        }
+        if rc != 0 || result.is_null() {
             return None;
         }
-        let pw = &*pw;
-        Some(UserInfo {
-            name: cstr(pw.pw_name),
-            uid: pw.pw_uid,
-            gid: pw.pw_gid,
-            home: cstr(pw.pw_dir),
-            shell: cstr(pw.pw_shell),
-        })
+        return Some(passwd_to_user(&pwd));
     }
 }
 
 pub fn user_by_name(name: &str) -> Option<UserInfo> {
     let c = std::ffi::CString::new(name).ok()?;
-    unsafe {
-        let pw = libc::getpwnam(c.as_ptr());
-        if pw.is_null() {
+    let mut buf: Vec<libc::c_char> = vec![0; 16 * 1024];
+    loop {
+        let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
+        let mut result: *mut libc::passwd = std::ptr::null_mut();
+        let rc = unsafe {
+            libc::getpwnam_r(
+                c.as_ptr(),
+                &mut pwd,
+                buf.as_mut_ptr(),
+                buf.len(),
+                &mut result,
+            )
+        };
+        if rc == libc::ERANGE {
+            buf.resize(buf.len() * 2, 0);
+            continue;
+        }
+        if rc != 0 || result.is_null() {
             return None;
         }
-        let pw = &*pw;
-        Some(UserInfo {
-            name: cstr(pw.pw_name),
-            uid: pw.pw_uid,
-            gid: pw.pw_gid,
-            home: cstr(pw.pw_dir),
-            shell: cstr(pw.pw_shell),
-        })
+        return Some(passwd_to_user(&pwd));
     }
 }
 
@@ -98,6 +118,8 @@ fn parse_desktop(path: &Path, kind: SessionKind) -> Option<Session> {
     let mut name = None;
     let mut exec = None;
     let mut desktop_names = None;
+    let mut try_exec = None;
+    let mut localized_names: Vec<(String, String)> = Vec::new();
     let mut hidden = false;
     let mut no_display = false;
     let mut section = String::new();
@@ -118,26 +140,81 @@ fn parse_desktop(path: &Path, kind: SessionKind) -> Option<Session> {
         };
         let key = key.trim();
         let value = value.trim();
-        match key {
-            "Name" => name = Some(value.to_string()),
-            "Exec" => exec = Some(value.to_string()),
-            "DesktopNames" => desktop_names = Some(value.to_string()),
-            "Hidden" => hidden = value.eq_ignore_ascii_case("true"),
-            "NoDisplay" => no_display = value.eq_ignore_ascii_case("true"),
-            _ => {}
+        if key == "Name" {
+            name = Some(value.to_string());
+        } else if let Some(locale) = key.strip_prefix("Name[").and_then(|k| k.strip_suffix(']')) {
+            localized_names.push((locale.to_string(), value.to_string()));
+        } else {
+            match key {
+                "Exec" => exec = Some(value.to_string()),
+                "DesktopNames" => desktop_names = Some(value.to_string()),
+                "TryExec" => try_exec = Some(value.to_string()),
+                "Hidden" => hidden = value.eq_ignore_ascii_case("true"),
+                "NoDisplay" => no_display = value.eq_ignore_ascii_case("true"),
+                _ => {}
+            }
         }
     }
     if hidden || no_display {
         return None;
     }
-    let name = name.filter(|s| !s.is_empty())?;
+    if let Some(try_exec) = try_exec.filter(|s| !s.is_empty()) {
+        if !command_exists(&try_exec) {
+            return None;
+        }
+    }
+    let name = localized_name(name, &localized_names).filter(|s| !s.is_empty())?;
     let exec = exec.filter(|s| !s.is_empty())?;
+    let desktop_id = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .filter(|s| !s.is_empty());
     Some(Session {
         name,
         exec,
         kind,
         desktop_names,
+        desktop_id,
     })
+}
+
+fn command_exists(program: &str) -> bool {
+    let path = Path::new(program);
+    if path.is_absolute() {
+        return path.is_file();
+    }
+    std::env::var_os("PATH").is_some_and(|paths| {
+        std::env::split_paths(&paths).any(|dir| {
+            let candidate = dir.join(program);
+            candidate.is_file()
+        })
+    })
+}
+
+fn localized_name(default: Option<String>, localized: &[(String, String)]) -> Option<String> {
+    let locale = std::env::var("LC_ALL")
+        .or_else(|_| std::env::var("LC_MESSAGES"))
+        .or_else(|_| std::env::var("LANG"))
+        .unwrap_or_default();
+    let locale = locale.split('.').next().unwrap_or("").trim();
+    if !locale.is_empty() && locale != "C" && locale != "POSIX" {
+        if let Some((_, name)) = localized
+            .iter()
+            .find(|(lang, _)| lang.eq_ignore_ascii_case(locale))
+            .filter(|(_, name)| !name.is_empty())
+        {
+            return Some(name.clone());
+        }
+        let lang = locale.split('_').next().unwrap_or(locale);
+        if let Some((_, name)) = localized
+            .iter()
+            .find(|(candidate, _)| candidate.eq_ignore_ascii_case(lang))
+            .filter(|(_, name)| !name.is_empty())
+        {
+            return Some(name.clone());
+        }
+    }
+    default
 }
 
 /// Synthetic "tty shell" session appended to the environment list.  An empty
@@ -149,13 +226,14 @@ pub fn tty_shell_session(command: Option<&[String]>) -> Session {
         exec: command.map(|c| c.join(" ")).unwrap_or_default(),
         kind: SessionKind::Tty,
         desktop_names: Some("tty shell".into()),
+        desktop_id: Some("tty-shell".into()),
     }
 }
 
 pub fn discover(dirs: &[PathBuf]) -> Vec<Session> {
     let mut out = Vec::new();
     for dir in dirs {
-        let kind = if dir.to_string_lossy().contains("xsession") {
+        let kind = if dir.file_name().and_then(|n| n.to_str()) == Some("xsessions") {
             SessionKind::X11
         } else {
             SessionKind::Wayland
@@ -171,7 +249,13 @@ pub fn discover(dirs: &[PathBuf]) -> Vec<Session> {
         files.sort();
         for file in files {
             if let Some(session) = parse_desktop(&file, kind) {
-                if !out.iter().any(|s: &Session| s.name == session.name) {
+                let duplicate =
+                    out.iter()
+                        .any(|s: &Session| match (&s.desktop_id, &session.desktop_id) {
+                            (Some(a), Some(b)) => a == b,
+                            _ => s.name == session.name,
+                        });
+                if !duplicate {
                     out.push(session);
                 }
             }
@@ -182,10 +266,12 @@ pub fn discover(dirs: &[PathBuf]) -> Vec<Session> {
 
 pub fn pick_default(sessions: &[Session], wanted: Option<&str>, current: Option<&str>) -> usize {
     if let Some(wanted) = wanted {
-        if let Some(i) = sessions
-            .iter()
-            .position(|s| s.name.eq_ignore_ascii_case(wanted))
-        {
+        if let Some(i) = sessions.iter().position(|s| {
+            s.name.eq_ignore_ascii_case(wanted)
+                || s.desktop_id
+                    .as_deref()
+                    .is_some_and(|id| id.eq_ignore_ascii_case(wanted))
+        }) {
             return i;
         }
         if let Some(i) = sessions
@@ -283,16 +369,16 @@ pub fn greetd_spec(session: &Session, user: &UserInfo) -> (Vec<String>, Vec<Stri
             env.push("TERM=linux".to_string());
         }
     }
-    env.push(format!("XDG_SESSION_DESKTOP={}", session.name));
+    env.push(format!("XDG_SESSION_DESKTOP={}", session.display()));
     env.push(format!(
         "XDG_CURRENT_DESKTOP={}",
         session
             .desktop_names
             .clone()
-            .unwrap_or_else(|| session.name.clone())
+            .unwrap_or_else(|| session.display().to_string())
     ));
-    env.push(format!("XDG_RUNTIME_DIR=/run/user/{}", user.uid));
-    env.push("PATH=/usr/local/bin:/usr/bin:/bin".to_string());
+    // Do not override XDG_RUNTIME_DIR or PATH here: PAM/pam_systemd already
+    // created them, and start_session env is appended on top of that.
     (cmd, env)
 }
 
@@ -323,13 +409,13 @@ pub fn launch_session(session: &Session, user: &UserInfo) -> std::io::Result<()>
         .env("LOGNAME", &user.name)
         .env("SHELL", &user.shell)
         .env("PATH", "/usr/local/bin:/usr/bin:/bin")
-        .env("XDG_SESSION_DESKTOP", &session.name)
+        .env("XDG_SESSION_DESKTOP", session.display())
         .env(
             "XDG_CURRENT_DESKTOP",
             session
                 .desktop_names
                 .clone()
-                .unwrap_or_else(|| session.name.clone()),
+                .unwrap_or_else(|| session.display().to_string()),
         )
         .env("XDG_RUNTIME_DIR", format!("/run/user/{}", user.uid))
         .current_dir(if user.home.is_empty() {
@@ -422,14 +508,15 @@ mod tests {
             exec: "niri-session".into(),
             kind: SessionKind::Wayland,
             desktop_names: Some("niri".into()),
+            desktop_id: Some("niri".into()),
         };
         let (cmd, env) = greetd_spec(&session, &user());
         assert!(cmd[0].ends_with("niri"));
         assert_eq!(cmd[1], "--session");
         assert!(env.iter().any(|e| e == "XDG_SESSION_TYPE=wayland"));
         assert!(env.iter().any(|e| e == "XDG_SESSION_DESKTOP=niri"));
-        assert!(env.iter().any(|e| e == "XDG_RUNTIME_DIR=/run/user/1000"));
-        assert!(env.iter().any(|e| e.starts_with("PATH=")));
+        assert!(!env.iter().any(|e| e.starts_with("XDG_RUNTIME_DIR=")));
+        assert!(!env.iter().any(|e| e.starts_with("PATH=")));
     }
 
     #[test]
