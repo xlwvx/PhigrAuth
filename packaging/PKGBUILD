@@ -1,0 +1,48 @@
+# Maintainer: PhigrAuth contributors
+pkgname=phigrauth
+pkgver=0.1.1
+pkgrel=1
+pkgdesc="PhigrAuth — a Phigros themed TTY session manager / greeter"
+arch=('x86_64' 'aarch64')
+license=('GPL-2.0-only' 'OFL-1.1')
+depends=('gtk4' 'pam')
+makedepends=('rust' 'pkgconf')
+optdepends=(
+  'greetd: run PhigrAuth as a display-manager greeter'
+  'cage: minimal Wayland compositor for VT deployment'
+)
+install=phigrauth.install
+source=("phigrauth-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  cargo build --release --locked
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  cargo test --release --locked
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+
+  install -Dm755 target/release/phigrauth "$pkgdir/usr/bin/phigrauth"
+
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 config.example.toml "$pkgdir/usr/share/doc/$pkgname/config.example.toml"
+  cp -a --no-preserve=ownership docs "$pkgdir/usr/share/doc/$pkgname/docs"
+
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 assets/fonts/OFL-Saira.txt \
+    "$pkgdir/usr/share/licenses/$pkgname/OFL-Saira.txt"
+  install -Dm644 assets/fonts/LICENSE-SourceSansPro.md \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE-SourceSansPro.md"
+  install -Dm644 assets/fonts/LICENSE-Noto-CJK.txt \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE-Noto-CJK.txt"
+}

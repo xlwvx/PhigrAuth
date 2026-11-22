@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:ns1="http://www.inkscape.org/namespaces/inkscape" xmlns:xlink="http://www.w3.org/1999/xlink" width="1920" height="1080" viewBox="0 0 507.99994 285.74997" version="1.1"><defs><linearGradient id="linearGradient1" ns1:collect="always">
+      <stop style="stop-color:#d60a00;stop-opacity:0;" offset="0" id="stop2" />
+      <stop style="stop-color:#d40a00;stop-opacity:1;" offset="1" id="stop1" />
+    </linearGradient>
+    <rect x="70.628342" y="462.38019" width="626.23798" height="61.211224" id="rect2" />
+    <rect x="64.036362" y="314.53152" width="1526.5138" height="237.3112" id="rect1-3" />
+    <rect x="70.628342" y="462.38019" width="626.23798" height="61.211224" id="rect2-3" />
+    <rect x="64.036362" y="314.53152" width="1526.5138" height="237.3112" id="rect1" />
+    <rect x="70.628342" y="462.38019" width="626.23798" height="61.211224" id="rect2-6" />
+    <filter ns1:collect="always" style="color-interpolation-filters:sRGB" id="filter2" x="-0.03924855" y="-0.52209485" width="1.0784971" height="2.0441897">
+      <feGaussianBlur ns1:collect="always" stdDeviation="8.659807" id="feGaussianBlur2" />
+    </filter>
+    <rect x="64.036362" y="314.53152" width="1526.5138" height="237.3112" id="rect1-3-2" />
+    <rect x="70.628342" y="462.38019" width="626.23798" height="61.211224" id="rect2-3-6" />
+    <rect x="64.036362" y="314.53152" width="1526.5138" height="237.3112" id="rect1-1" />
+    <filter ns1:collect="always" style="color-interpolation-filters:sRGB" id="filter3" x="-0.027555585" y="-0.29125239" width="1.0551112" height="1.5825048">
+      <feGaussianBlur ns1:collect="always" stdDeviation="16.403301" id="feGaussianBlur3" />
+    </filter>
+    <linearGradient ns1:collect="always" xlink:href="#linearGradient1" id="linearGradient2" x1="16.953379" y1="132.60446" x2="150.6059" y2="131.38374" gradientUnits="userSpaceOnUse" gradientTransform="matrix(0.47561606,0,0,0.25440226,18.888974,76.688626)" />
+    <linearGradient ns1:collect="always" xlink:href="#linearGradient1" id="linearGradient3" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-0.47561568,0,0,0.25440226,489.11109,76.688626)" x1="16.953379" y1="132.60446" x2="150.6059" y2="131.38374" />
+  </defs><g transform="matrix(0.82172119,0,0,0.82172119,116.30716,15.49105)"><g ns1:groupmode="layer" id="layer8" ns1:label="图层 字 1" transform="matrix(1.2169578,0,0,1.2169578,-141.5409,-18.851954)">
+      <text xml:space="preserve" transform="matrix(0.17183278,0,0,0.24770807,119.52935,14.269709)" id="text1-9" style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:192px;font-family:Saira;-inkscape-font-specification:Saira;writing-mode:lr-tb;direction:ltr;white-space:pre;shape-inside:url(#rect1-3-2);display:inline;opacity:1;mix-blend-mode:normal;fill:#d40b00;fill-opacity:1;stroke:none;stroke-width:0;stroke-linecap:round;stroke-dasharray:none;stroke-opacity:1;filter:url(#filter3)"><tspan x="64.037109" y="476.98106" id="tspan2"><tspan style="font-weight:500;-inkscape-font-specification:'Saira Medium'" id="tspan1">ACCESS DENIED</tspan></tspan></text>
+      <text xml:space="preserve" transform="matrix(0.17183278,0,0,0.24770808,119.42302,14.098109)" id="text1" style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:192px;font-family:Saira;-inkscape-font-specification:Saira;writing-mode:lr-tb;direction:ltr;white-space:pre;shape-inside:url(#rect1-1);display:inline;fill:#d40b00;stroke:none;stroke-width:4.40315;stroke-linecap:round;stroke-dasharray:none;stroke-opacity:1"><tspan x="64.037109" y="476.98106" id="tspan4"><tspan style="font-weight:500;-inkscape-font-specification:'Saira Medium';fill:#000000" id="tspan3">ACCESS DENIED</tspan></tspan></text>
+    </g>
+    </g></svg>

@@ -1,0 +1,31 @@
+# PhigrAuth configuration example
+# Copy to ~/.config/phigrauth/config.toml or /etc/phigrauth/config.toml
+
+# Authentication backend:
+#   "auto"   -> use greetd IPC when GREETD_SOCK is present, otherwise PAM
+#   "greetd" -> always use greetd IPC (requires GREETD_SOCK)
+#   "pam"    -> always use local Linux-PAM
+auth_backend = "auto"
+
+# PAM service used when auth_backend is "pam" (or auto without greetd).
+pam_service = "login"
+
+# Pre-fill the user name.  Empty means an empty username field (shown as "user"), and does not fall back to the current process user.
+default_user = ""
+
+# Session selected at startup.  Matches Name or DesktopNames from a .desktop file.
+default_session = "niri"
+
+# Where to look for session desktop entries.
+sessions_dirs = ["/usr/share/wayland-sessions", "/usr/share/xsessions"]
+
+# Power actions (F1 / F2).  Executed with the arguments exactly as listed.
+poweroff_command = ["systemctl", "poweroff"]
+reboot_command = ["systemctl", "reboot"]
+
+# Set to false to exit after a successful login without launching the session.
+launch_session = true
+
+# Optional command for the synthetic "tty shell" entry appended to the
+# environment list.  When omitted, the user's login shell is used.
+# tty_shell_command = ["/bin/bash", "-l"]

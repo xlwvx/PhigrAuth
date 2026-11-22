@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:ns1="http://www.inkscape.org/namespaces/inkscape" xmlns:xlink="http://www.w3.org/1999/xlink" width="1920" height="1080" viewBox="0 0 507.99994 285.74997" version="1.1"><defs><linearGradient id="linearGradient4" ns1:collect="always">
+      <stop style="stop-color:#f3da42;stop-opacity:0;" offset="0" id="stop3" />
+      <stop style="stop-color:#f3de44;stop-opacity:1;" offset="1" id="stop4" />
+    </linearGradient>
+    <linearGradient id="linearGradient1" ns1:collect="always">
+      <stop style="stop-color:#f3dd44;stop-opacity:0;" offset="0" id="stop2" />
+      <stop style="stop-color:#f3db44;stop-opacity:1;" offset="1" id="stop1" />
+    </linearGradient>
+    <rect x="70.628342" y="462.38019" width="626.23798" height="61.211224" id="rect2" />
+    <rect x="64.036362" y="314.53152" width="1526.5138" height="237.3112" id="rect1-3" />
+    <rect x="70.628342" y="462.38019" width="626.23798" height="61.211224" id="rect2-3" />
+    <rect x="64.036362" y="314.53152" width="1526.5138" height="237.3112" id="rect1" />
+    <rect x="70.628342" y="462.38019" width="626.23798" height="61.211224" id="rect2-6" />
+    <rect x="64.036362" y="314.53152" width="1526.5138" height="237.3112" id="rect1-3-2" />
+    <rect x="70.628342" y="462.38019" width="626.23798" height="61.211224" id="rect2-3-6" />
+    <rect x="64.036362" y="314.53152" width="1526.5138" height="237.3112" id="rect1-1" />
+    <linearGradient ns1:collect="always" xlink:href="#linearGradient1" id="linearGradient2" x1="16.953379" y1="132.60446" x2="150.6059" y2="131.38374" gradientUnits="userSpaceOnUse" gradientTransform="matrix(0.47561606,0,0,0.25440226,18.888974,76.688626)" />
+    <linearGradient ns1:collect="always" xlink:href="#linearGradient4" id="linearGradient3" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-0.47561568,0,0,0.25440226,489.11109,76.688626)" x1="16.953379" y1="132.60446" x2="150.6059" y2="131.38374" />
+    <rect x="64.036362" y="314.53152" width="1526.5138" height="237.3112" id="rect11" />
+    <filter ns1:collect="always" style="color-interpolation-filters:sRGB" id="filter11" x="-0.02843362" y="-0.23344706" width="1.0568672" height="1.4668941">
+      <feGaussianBlur ns1:collect="always" stdDeviation="13.147712" id="feGaussianBlur11" />
+    </filter>
+    <rect x="70.628342" y="462.38019" width="626.23798" height="61.211224" id="rect13" />
+    <filter ns1:collect="always" style="color-interpolation-filters:sRGB" id="filter13" x="-0.045889559" y="-0.1809325" width="1.0917791" height="1.361865">
+      <feGaussianBlur ns1:collect="always" stdDeviation="2.9785427" id="feGaussianBlur13" />
+    </filter>
+  </defs><g transform="matrix(0.82172119,0,0,0.82172119,116.30716,15.49105)"><g ns1:groupmode="layer" id="layer9" ns1:label="图层 字 2" transform="translate(47.199246)">
+      <text xml:space="preserve" transform="matrix(0.26458333,0,0,0.26458333,80.722157,31.418817)" id="text13" style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:42.6667px;font-family:'Source Sans Pro';-inkscape-font-specification:'Source Sans Pro';writing-mode:lr-tb;direction:ltr;white-space:pre;shape-inside:url(#rect13);display:inline;mix-blend-mode:normal;fill:#f3dc44;fill-opacity:1;stroke-width:4.40315;stroke-linecap:round;filter:url(#filter13)"><tspan x="70.628906" y="501.20223" id="tspan14"><tspan style="font-weight:normal;font-family:'Source Sans Pro';-inkscape-font-specification:'Source Sans Pro'" id="tspan10">验证中</tspan><tspan style="font-weight:normal;font-family:'Source Sans Pro';-inkscape-font-specification:'Source Sans Pro'" id="tspan11">...</tspan></tspan></text>
+      <text xml:space="preserve" transform="matrix(0.26458333,0,0,0.26458333,80.722157,31.418817)" id="text2-0" style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:42.6667px;font-family:'Source Sans Pro';-inkscape-font-specification:'Source Sans Pro';writing-mode:lr-tb;direction:ltr;white-space:pre;shape-inside:url(#rect2-3-6);display:inline;fill:#ffffff;fill-opacity:1;stroke-width:4.40315;stroke-linecap:round"><tspan x="70.628906" y="501.20223" id="tspan17"><tspan style="font-weight:normal;font-family:'Source Sans Pro';-inkscape-font-specification:'Source Sans Pro'" id="tspan15">验证中</tspan><tspan style="font-weight:normal;font-family:'Source Sans Pro';-inkscape-font-specification:'Source Sans Pro'" id="tspan16">...</tspan></tspan></text>
+    </g>
+  </g></svg>

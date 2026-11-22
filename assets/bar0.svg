@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:ns1="http://www.inkscape.org/namespaces/inkscape" xmlns:ns3="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" xmlns:xlink="http://www.w3.org/1999/xlink" width="1920" height="1080" viewBox="0 0 507.99994 285.74997" version="1.1"><defs><linearGradient id="linearGradient1" ns1:collect="always">
+      <stop style="stop-color:__GRAD_A__;stop-opacity:0;" offset="0" id="stop2" />
+      <stop style="stop-color:__GRAD_B__;stop-opacity:1;" offset="1" id="stop1" />
+    </linearGradient>
+    <rect x="70.628342" y="462.38019" width="626.23798" height="61.211224" id="rect2" />
+    <rect x="64.036362" y="314.53152" width="1526.5138" height="237.3112" id="rect1-3" />
+    <rect x="70.628342" y="462.38019" width="626.23798" height="61.211224" id="rect2-3" />
+    <rect x="64.036362" y="314.53152" width="1526.5138" height="237.3112" id="rect1" />
+    <rect x="70.628342" y="462.38019" width="626.23798" height="61.211224" id="rect2-6" />
+    <filter ns1:collect="always" style="color-interpolation-filters:sRGB" id="filter2" x="-0.03924855" y="-0.52209485" width="1.0784971" height="2.0441897">
+      <feGaussianBlur ns1:collect="always" stdDeviation="8.659807" id="feGaussianBlur2" />
+    </filter>
+    <rect x="64.036362" y="314.53152" width="1526.5138" height="237.3112" id="rect1-3-2" />
+    <rect x="70.628342" y="462.38019" width="626.23798" height="61.211224" id="rect2-3-6" />
+    <rect x="64.036362" y="314.53152" width="1526.5138" height="237.3112" id="rect1-1" />
+    <filter ns1:collect="always" style="color-interpolation-filters:sRGB" id="filter3" x="-0.027555585" y="-0.29125239" width="1.0551112" height="1.5825048">
+      <feGaussianBlur ns1:collect="always" stdDeviation="16.403301" id="feGaussianBlur3" />
+    </filter>
+    <linearGradient ns1:collect="always" xlink:href="#linearGradient1" id="linearGradient2" x1="16.953379" y1="132.60446" x2="150.6059" y2="131.38374" gradientUnits="userSpaceOnUse" gradientTransform="matrix(0.47561606,0,0,0.25440226,18.888974,76.688626)" />
+    <linearGradient ns1:collect="always" xlink:href="#linearGradient1" id="linearGradient3" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-0.47561568,0,0,0.25440226,489.11109,76.688626)" x1="16.953379" y1="132.60446" x2="150.6059" y2="131.38374" />
+  </defs><g transform="matrix(0.74044866,0,0,0.74044866,178.96945,121.82994)"><g ns1:groupmode="layer" id="layer10" ns1:label="图层 用户名输入框" transform="matrix(1.3505325,0,0,1.3505325,-241.70406,-164.5353)">
+      <path d="m -59.278275,126.16317 -7.52322,13.03062 7.52322,13.03064 H 33.62679 l -7.522604,-13.03064 7.522604,-13.03062 z" style="fill:__FILL__;stroke:__STROKE__;stroke-width:2.525;stroke-linecap:round;stroke-dasharray:none;stroke-opacity:1" id="path3" ns3:nodetypes="ccccccc" transform="matrix(0.74044867,0,0,0.74044867,178.96945,121.82995)" />
+      <text xml:space="preserve" style="font-weight:500;font-size:11.7834px;font-family:Saira;-inkscape-font-specification:'Saira Medium';text-align:center;writing-mode:lr-tb;direction:ltr;text-anchor:middle;fill:#000000;fill-opacity:1;stroke-width:0;stroke-linecap:round" x="-17.690088" y="143.03766" id="text5" transform="matrix(0.74044867,0,0,0.74044867,178.96945,121.82995)"><tspan ns3:role="line" style="font-size:11.7834px;fill:#000000;fill-opacity:1;stroke-width:0" x="-17.690088" y="143.03766" id="tspan6">__TEXT__</tspan></text>
+    </g>
+    </g></svg>
