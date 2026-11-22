@@ -62,7 +62,8 @@ cd packaging
 - 源码包已经生成，也可以直接 `cd packaging && makepkg -si`；`package.sh` 默认带 `-f`，修改源码后重新运行即可。
 - `package.sh` 会重新打包当前工作树（不包含 `target/`、`packaging/src/` 等）。
 - 首次构建需要联网下载 crate；软件包安装到 `/usr/bin/phigrauth`，文档在 `/usr/share/doc/phigrauth`，许可证在 `/usr/share/licenses/phigrauth`。
-- 构建完成后也可以直接安装：`sudo pacman -U packaging/phigrauth-0.1.1-1-x86_64.pkg.tar.zst`。
+- 软件包安装/升级时，如果 `/etc/phigrauth/config.toml` 不存在，会从 `config.example.toml` 放置默认配置；已有配置不会被覆盖。
+- 构建完成后也可以直接安装：`sudo pacman -U packaging/phigrauth-0.1.1-2-x86_64.pkg.tar.zst`。
 
 ## 运行
 
@@ -75,9 +76,6 @@ cd packaging
 
 # 不真正执行 systemctl，只显示提示（测试 F1/F2）
 ./target/release/phigrauth --dry-power
-
-# 指定配置文件
-./target/release/phigrauth --config /path/to/config.toml
 
 # 渲染各状态截图（无需图形会话），用于视觉对比
 ./target/release/phigrauth --snapshots ./snapshots
@@ -93,7 +91,7 @@ cd packaging
 
 ## 配置
 
-默认查找顺序：`$XDG_CONFIG_HOME/phigrauth/config.toml` → `~/.config/phigrauth/config.toml` → `/etc/phigrauth/config.toml`。示例见 [`config.example.toml`](config.example.toml)。
+程序**只读取** `/etc/phigrauth/config.toml`。文件不存在时使用内置默认值；软件包安装时若该文件不存在，会放置默认配置。示例见 [`config.example.toml`](config.example.toml)，默认值定义见 `src/config.rs`。
 
 ```toml
 auth_backend = "auto"

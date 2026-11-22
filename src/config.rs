@@ -52,22 +52,20 @@ struct FileConfig {
 }
 
 impl Config {
-    /// Load configuration.  An explicitly requested `--config` path is fatal
-    /// when it cannot be read or parsed; an automatically discovered file only
-    /// emits a warning and keeps defaults.
-    pub fn load(path: Option<&Path>) -> Result<Config, String> {
-        let explicit = path.is_some();
+    /// Load the single system configuration file.  Missing file means the
+    /// built-in defaults; a present but unreadable/invalid file is fatal.
+    pub fn load() -> Result<Config, String> {
+        Self::load_from(Path::new("/etc/phigrauth/config.toml"))
+    }
+
+    fn load_from(path: &Path) -> Result<Config, String> {
         let mut cfg = Config::default();
-        let path = path.map(|p| p.to_path_buf()).or_else(default_config_path);
-        let Some(path) = path else {
-            return Ok(cfg);
-        };
-        let text = match std::fs::read_to_string(&path) {
+        let text = match std::fs::read_to_string(path) {
             Ok(text) => text,
-            Err(e) if explicit => {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(cfg),
+            Err(e) => {
                 return Err(format!("无法读取配置 {}: {e}", path.display()));
             }
-            Err(_) => return Ok(cfg),
         };
         match toml::from_str::<FileConfig>(&text) {
             Ok(fc) => {
@@ -105,11 +103,8 @@ impl Config {
                 }
                 cfg.tty_shell_command = fc.tty_shell_command.filter(|v| !v.is_empty());
             }
-            Err(e) if explicit => {
-                return Err(format!("无法解析配置 {}: {e}", path.display()));
-            }
             Err(e) => {
-                eprintln!("phigrauth: invalid config {}: {e}", path.display());
+                return Err(format!("无法解析配置 {}: {e}", path.display()));
             }
         }
         Ok(cfg)
@@ -128,44 +123,38 @@ fn default_sessions_dirs() -> Vec<PathBuf> {
     out
 }
 
-fn default_config_path() -> Option<PathBuf> {
-    if let Ok(dir) = std::env::var("XDG_CONFIG_HOME") {
-        let p = PathBuf::from(dir).join("phigrauth/config.toml");
-        if p.exists() {
-            return Some(p);
-        }
-    }
-    if let Ok(home) = std::env::var("HOME") {
-        let p = PathBuf::from(home).join(".config/phigrauth/config.toml");
-        if p.exists() {
-            return Some(p);
-        }
-    }
-    let p = PathBuf::from("/etc/phigrauth/config.toml");
-    if p.exists() {
-        return Some(p);
-    }
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn explicit_missing_config_is_fatal() {
-        let path = Path::new("/definitely/not/a/phigrauth/config.toml");
-        assert!(Config::load(Some(path)).is_err());
+    fn temp_config(contents: Option<&str>) -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "phigrauth-config-test-{}-{}.toml",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        if let Some(contents) = contents {
+            std::fs::write(&path, contents).unwrap();
+        }
+        path
     }
 
     #[test]
-    fn explicit_invalid_config_is_fatal() {
-        let path = std::env::temp_dir().join(format!(
-            "phigrauth-invalid-config-{}.toml",
-            std::process::id()
-        ));
-        std::fs::write(&path, "pam_service = [").unwrap();
-        let result = Config::load(Some(&path));
+    fn missing_file_uses_builtin_defaults() {
+        let path = temp_config(None);
+        let cfg = Config::load_from(&path).unwrap();
+        assert_eq!(cfg.pam_service, "login");
+        assert!(cfg.launch_session);
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn present_but_invalid_file_is_fatal() {
+        let path = temp_config(Some("pam_service = ["));
+        let result = Config::load_from(&path);
         let _ = std::fs::remove_file(&path);
         assert!(result.is_err());
     }

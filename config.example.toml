@@ -1,5 +1,5 @@
-# PhigrAuth configuration example
-# Copy to ~/.config/phigrauth/config.toml or /etc/phigrauth/config.toml
+# PhigrAuth default configuration
+# Installed at /etc/phigrauth/config.toml. These are the packaged defaults.
 
 # Authentication backend:
 #   "auto"   -> use greetd IPC when GREETD_SOCK is present, otherwise PAM

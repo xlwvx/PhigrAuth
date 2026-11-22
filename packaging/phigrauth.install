@@ -1,20 +1,31 @@
+ensure_default_config() {
+  if [ ! -e /etc/phigrauth/config.toml ] &&
+     [ -f /usr/share/doc/phigrauth/config.example.toml ]; then
+    install -Dm644 /usr/share/doc/phigrauth/config.example.toml \
+      /etc/phigrauth/config.toml
+    echo "PhigrAuth: installed default configuration at /etc/phigrauth/config.toml"
+  fi
+}
+
 post_install() {
+  ensure_default_config
   cat <<'EOS'
 PhigrAuth is a TTY greeter. When started by greetd it automatically uses the
 greetd IPC socket (GREETD_SOCK) for PAM authentication and session start, so
 it can run as an unprivileged greeter user under cage. Standalone/root PAM
 mode is also available (auth_backend = "pam").
-See /usr/share/doc/phigrauth/README.md and config.example.toml.
+Configuration: /etc/phigrauth/config.toml
+Docs: /usr/share/doc/phigrauth/README.md and config.example.toml
 
-For UI development only:
-  PHIGRAUTH_DEV_PASSWORD=test phigrauth --windowed --dry-power --dev-mock
+The packaged binary does not contain dev-mock; build from source with
+--features dev-mock for UI development.
 EOS
 }
 
 post_upgrade() {
-  post_install
+  ensure_default_config
 }
 
 pre_remove() {
-  :
+  echo "PhigrAuth: /etc/phigrauth/config.toml was left in place."
 }

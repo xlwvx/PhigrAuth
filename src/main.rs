@@ -20,7 +20,6 @@ use scene::{Palette, Renderer, SubtitleKind, TitleKind, VisualState};
 
 fn main() -> glib::ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let mut config_path: Option<String> = None;
     let mut snapshots: Option<String> = None;
     let mut dry_power = false;
     let mut windowed = false;
@@ -30,7 +29,7 @@ fn main() -> glib::ExitCode {
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
-            "--config" | "--snapshots" | "--user" => {
+            "--snapshots" | "--user" => {
                 let value = match args.get(i + 1) {
                     Some(v) => v.clone(),
                     None => {
@@ -43,7 +42,6 @@ fn main() -> glib::ExitCode {
                     return glib::ExitCode::FAILURE;
                 }
                 match args[i].as_str() {
-                    "--config" => config_path = Some(value),
                     "--snapshots" => snapshots = Some(value),
                     _ => user_override = Some(value),
                 }
@@ -78,7 +76,7 @@ fn main() -> glib::ExitCode {
             }
         }
     }
-    let config = match Config::load(config_path.as_deref().map(std::path::Path::new)) {
+    let config = match Config::load() {
         Ok(config) => config,
         Err(e) => {
             eprintln!("phigrauth: {e}");
@@ -106,7 +104,6 @@ fn print_help() {
 Usage: phigrauth [options]
 
 Options:
-  --config <path>     configuration file
   --user <name>       default user name
   --dry-power         do not run systemctl for F1/F2 (for testing)
 {dev_mock_flag}  --windowed          do not go fullscreen
@@ -116,6 +113,9 @@ Options:
 
 Environment:
   PHIGRAUTH_USER{dev_mock_env}
+
+Configuration:
+  /etc/phigrauth/config.toml
 "#,
         dev_mock_flag = dev_mock_help_flag(),
         dev_mock_env = dev_mock_help_env(),

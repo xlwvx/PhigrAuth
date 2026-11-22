@@ -1,7 +1,7 @@
 # Maintainer: PhigrAuth contributors
 pkgname=phigrauth
 pkgver=0.1.1
-pkgrel=1
+pkgrel=2
 pkgdesc="PhigrAuth — a Phigros themed TTY session manager / greeter"
 arch=('x86_64' 'aarch64')
 license=('GPL-2.0-only' 'OFL-1.1')
