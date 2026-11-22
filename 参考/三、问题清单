@@ -1,0 +1,38 @@
+## 三、问题清单
+
+### P0：建议立刻处理
+
+| # | 位置 | 问题 |
+|---|---|---|
+| 1 | `auth.rs:36-44`、`100-107` | `--dev-mock` 下若未设置 `PHIGRAUTH_DEV_PASSWORD`，期望值是空串，**空密码即认证成功**（密码栏留空回车即可进）。而这段代码编在发布二进制里，greetd 配置抄错一个参数就变成"任意空密码登录"。建议：期望值为空时拒绝启用，并把 mock 用 cargo feature 移出 release 构建。 |
+| 2 | `scene.rs:593` vs `665-671` | `layer_for` 用 `expect("layer")`，但 `build_layer` 在 usvg 解析失败/`Pixmap::new` 失败时会返回 `None`。一旦命中，就是**每帧 panic** → greetd 重启 greeter → 开机动画无限循环。渲染失败应跳过该层而不是崩溃。 |
+| 3 | `app.rs:270-276` | 电源命令返回 `Ok` 就 `quit_requested = true`。`systemctl poweroff` 通常很快返回，进程一退，greetd 立刻拉起 greeter——**关机/重启前会再闪一次完整的 2 秒开机动画**。成功后应停在 Powering 画面不再退出。 |
+| 4 | `app.rs:333-336` | 20s 超时只把 `Receiver` 丢掉：worker 仍持有 socket 且还有 60s 读超时，greetd 侧的会话要等 worker 结束才释放，用户连续重试会叠加。应给 `Session` 实现 `Drop`（发 `cancel_session`）并给 worker 一个取消标志。 |
+| 5 | `auth.rs:46-64`、`sessions.rs:299-379` | 本地 PAM 路径只调 `authenticate()`，没有 `acct_mgmt()`、没有 `open_session()`/`pam_systemd`，因此没有 logind 会话、`/run/user/UID` 不会建立、DRM/输入设备 ACL 不存在，却硬写了 `XDG_RUNTIME_DIR` 指向可能不存在的目录。**这条路径实际只能跑 tty shell，跑不起任何 Wayland 会话**，建议标注 dev-only 或直接删除。 |
+
+### P1：协议与行为正确性
+
+- **`greetd.rs:109-125` 对认证对话做了硬假设**：最多 12 条消息，且所有 `secret`/`visible` 提示都回同一个密码。greetd-ipc(7) 原文是 "There are no limits on the number and type of messages… a greeter should not make any assumptions"。MFA、二次确认、密码过期改密都会失败。建议去掉条数上限（或给 128），只对第一个 `secret` 回密码，其余回空/如实展示 `auth_message` 文本。
+- **`auth.rs:57-62` 漏了 `New_Authtok_Reqd`**：密码过期时 PAM 返回的是这个码（不是 `Cred_Expired`），会落到 `_ => Error`，界面显示"认证服务错误"，用户完全不知道要改密码。
+- **`sessions.rs:277-296` 的 env 会覆盖 PAM 环境**：按 spec，`start_session` 的 env 是"追加到 PAM 创建的环境之上"，所以写死的 `XDG_RUNTIME_DIR`、`PATH` 优先于 `pam_systemd` 的结果；`XDG_SESSION_DESKTOP` 用了 `session.name`（可能是 "COSMIC Session" 这种带空格的显示名），应该用 desktop id / `display()`。
+- **`sessions.rs:257-259` tty shell 没有 TTY**：greetd 派生的子进程继承的是 greetd 的 stdio（systemd 下即 `/dev/null`），`sh -l` 会立即 EOF 退出。要有意义必须 `setsid` + 开新 VT（`openvt`/`TIOCSCTTY`）。
+- **`app.rs:624-638` Verifying 无法取消**：非 Login 相位下所有按键都被 `return` 挡掉（F1/F2 也被 phase 判断挡住），用户只能干等最多 20 秒。建议 `Esc` → `cancel_session` → 回 Login。
+- **`app.rs:366` `start_session` 在 GTK 主线程同步 IPC**：`Session` 的读超时是 60s，greetd 异常时界面会冻结。挪到 worker，或把这次调用的超时降到 2–3 秒。
+
+### P2：健壮性与性能
+
+| 位置 | 问题 |
+|---|---|
+| `app.rs:433-443` | `needs_frame` 在非 Login 相位恒为 `true`（Powering 卡住就满帧重绘），且 `add_tick_callback` 永远以 vsync 频率唤醒进程。建议 Powering 加超时，或改用 `timeout_add_local` 动态间隔。 |
+| `scene.rs:393-399, 463-489` | **调色板补间是最大的性能隐患**：`Key` 里含插值后的颜色字符串，0.18s 的 crossfade 里每帧都是新 Key → 每帧重新 parse + 光栅化整层 SVG（箭头×2、连线、输入条×3+），上百次光栅化挤在 0.18s 内，再叠加 `cache.len() > 260` 整片清空。建议颜色量化成 8 档，或改成"两套调色板各渲染一次 + alpha 交叉"。 |
+| `config.rs:64-67, 103` | 显式 `--config` 指向的文件不存在或 TOML 解析失败时只 `eprintln` 然后静默用默认值（`launch_session = true`）。显式路径应当 fatal。 |
+| `main.rs:33-44` | `--config` / `--user` / `--snapshots` 缺值时静默变成 `None`，与"未知参数报错"的严格程度不一致。 |
+| `sessions.rs:53-86` | `getpwuid`/`getpwnam` 非可重入，且可能在主线程上阻塞于网络 NSS。用 `_r` 变体，或把用户查询移到认证线程。 |
+| `app.rs` / `scene.rs` | 密码 `String` 全程未 zeroize；`paint` 每帧 `hex()` + `text.clone()` 产生十余次小分配。 |
+| `packaging/` | `PKGBUILD` 和 `package.sh` 都会 `cp -a docs`（还有 `tools/`），但当前树里这两个目录不存在，`set -e` 下 **`package.sh` 会直接失败**；README 里的截图链接同样是断的。 |
+| `main.rs:112` | `GApplication` 默认带 D-Bus 单实例语义；有 session bus 时第二次启动会"激活"旧实例并退出。greeter 建议 `NON_UNIQUE`。 |
+| `sessions.rs:155-181` | 会话类型靠路径里是否含 `xsession` 子串判断；不读 `XDG_DATA_DIRS`/`/usr/local/share`、不支持 `Name[zh_CN]`/`TryExec`，去重按 `Name` 而不是 desktop id。 |
+
+### 做得好的地方（不建议动）
+
+时间轴用绝对时间戳因此帧率无关；认证与电源全部下沉到 worker；greetd 帧协议实现正确（原生字节序、`MAX_MESSAGE` 上限校验、错误类型区分 `auth_error`/`error`）；`dev-mock` 必须显式传 flag 的方向是对的（只是上面第 1 条的执行有洞）；`Renderer` 与 `App` 严格解耦，使 `--snapshots` 无需 display 就能出 1920×1080 回归图；`fail_and_retry` 里用 `snap` 在红色遮罩下预先切换状态，这个处理很讲究。
