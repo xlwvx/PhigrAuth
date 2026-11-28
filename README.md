@@ -2,9 +2,9 @@
 
 一个按 `参考/要求.md` 实现的 TTY greeter（会话管理器）：原生 Rust + GTK4，全屏 Wayland 客户端。所有画面严格由 `参考/` 下的 8 个 SVG 与 `bg.ggb` 中的 GeoGebra 构造驱动。
 
-![overview](docs/screenshots/overview.png)
+![overview](../docs/screenshots/overview.png)
 
-启动动画分阶段截图见 [boot.png](docs/screenshots/boot.png)，`tty shell` 选项见 [env-tty-shell.png](docs/screenshots/env-tty-shell.png)。
+启动动画分阶段截图见 [boot.png](../docs/screenshots/boot.png)，`tty shell` 选项见 [env-tty-shell.png](../docs/screenshots/env-tty-shell.png)。
 
 ## 功能
 
@@ -21,7 +21,7 @@
   - 用户名：未聚焦 `user:<内容>`；内容为空时只显示 `user`（不带冒号）；聚焦时只显示内容。
   - 密码：未聚焦 `password`，聚焦时按字符数显示 `*`。
   - 桌面环境：未聚焦 `env: niri`，聚焦时只显示环境名；此时底部额外显示 `↑↓ 切换桌面环境`。
-  - 切换桌面环境时，旧文字先变成等大的实心方块，方块从上方往下收缩到文字下边缘，新文字从上方逐渐露出（见 [env-wipe.png](docs/screenshots/env-wipe.png)）。
+  - 切换桌面环境时，旧文字先变成等大的实心方块，方块从上方往下收缩到文字下边缘，新文字从上方逐渐露出（见 [env-wipe.png](../docs/screenshots/env-wipe.png)）。
   - 环境列表末尾始终附加一个 `tty shell` 选项，成功后启动用户的登录 shell（或配置的命令）。
 - **验证流程**：回车进入 `verifying.svg`；成功为 `access granted.svg`。失败时先在暗红遮罩下瞬间切到完全就绪的 `retry.svg` 状态并**清空密码输入框**，再让全屏 `#550808` 在 0.1s 内褪去——红色退完时看到的就是 retry，不会看到 verifying→retry 的过渡。验证中按 `Esc` 可取消并返回登录。
 - **成功退场**：元素在 1s 内上浮出屏、背景压暗至黑，随后启动所选会话并退出。
@@ -226,7 +226,7 @@ l3: (t·cos150° - n·s·sin150°, t·sin150° + n·s·cos150°)
 cargo test
 ```
 
-覆盖：启动时间轴、焦点循环、密码遮挡、失败清空密码、环境切换、tty shell、greetd IPC 帧协议/认证/start_session、内嵌字体可用性。开发时还使用 Broadway + WebDriver 做端到端按键回归（截图在 `docs/screenshots/`）。参考 SVG 与 `bg.ggb` 未修改。
+覆盖：启动时间轴、焦点循环、密码遮挡、失败清空密码、环境切换、tty shell、greetd IPC 帧协议/认证/start_session、内嵌字体可用性。开发时还使用 Broadway + WebDriver 做端到端按键回归（截图在 `../docs/screenshots/`）。参考 SVG 与 `bg.ggb` 未修改。
 
 ## 已知限制
 

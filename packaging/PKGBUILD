@@ -13,7 +13,6 @@ optdepends=(
 )
 install=phigrauth.install
 source=("phigrauth-$pkgver.tar.gz")
-sha256sums=('18ea116dd07766abf3e265b13a31e62a42886b88f28a29994f704d675a8e56ce')
 
 prepare() {
   cd "$pkgname-$pkgver"
